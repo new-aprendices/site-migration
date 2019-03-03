@@ -40,10 +40,7 @@ let redablePost (post: JsonValue) =
     let author, date, content, category = (post?author.AsString(), toDateTime(post?date.AsInteger64()).ToString(), post?content.AsString(), post?category.AsString())
     let content = normaliseUrl content
 
-    "<strong>" + author + "</strong>" +
-    " - <em>" + category + "</em></br>" +
-    "<small>" + date + "</small>" +
-    "<p>" + content + "</p></br>"       
+    String.Format ("**{0}** - *{1}* - {2}\n\n{3}\n\n", author, category, date, content)
 
 let downloadPost = composePostUrl >> executeRequest >> redablePost   
 
