@@ -12,11 +12,12 @@ let baseUrl = "http://goyim.dnsdojo.org/aprendices"
 
 let loadPosts = HtmlDocument.Load(baseUrl+"/list.html")
 
-let extractPostUrl (page:HtmlDocument) =
+let extractPostUrls (page:HtmlDocument) =
     page.Descendants ["a"]
     |> Seq.map (fun x -> x.TryGetAttribute("href") 
                         |> Option.map (fun a -> a.Value())
                         |> Option.get) 
+    |> Seq.rev
     |> Seq.toArray
 
 let composePostUrl (url:string) =
@@ -39,14 +40,18 @@ let redablePost (post: JsonValue) =
     let author, date, content, category = (post?author.AsString(), toDateTime(post?date.AsInteger64()).ToString(), post?content.AsString(), post?category.AsString())
     let content = normaliseUrl content
 
-    "**" + author + "** " + date + "\n" +
-    "*" + category + "*\n\n" +
-    "" + content + "\n"           
+    "<strong>" + author + "</strong>" +
+    " - <em>" + category + "</em></br>" +
+    "<small>" + date + "</small>" +
+    "<p>" + content + "</p></br>"       
 
 let downloadPost = composePostUrl >> executeRequest >> redablePost   
 
 let createPage index posts lastPage =
-    let pageName i = @"posts"+i.ToString()+".md"
+    let pageName i =
+        match i with
+        | 0 -> @"index.md"
+        | _ -> @"index"+i.ToString()+".md"
 
     let nextPageLink = String.Format ("[Next page]({0})", (pageName (index+1)))
 
@@ -61,7 +66,7 @@ let createSite (list: string[][]) =
     list |> Array.mapi (fun index posts -> createPage index posts (isLastPage index))
 
 loadPosts 
-|> extractPostUrl    
+|> extractPostUrls
 |> Array.map downloadPost 
 |> Array.chunkBySize 50
 |> createSite
