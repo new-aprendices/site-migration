@@ -3,10 +3,13 @@ open System
 open System.IO
 open FSharp.Data
 
-let toDateTime (timestamp:int64) =
-    let start = DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)
-    start.AddMilliseconds(float timestamp).ToLocalTime()
-    
+let parameters = Environment.GetCommandLineArgs()
+let chunkPostsBy = Array.tryFind (fun (x:string) -> x.StartsWith("chunkBy=")) parameters
+
+let chunker = match chunkPostsBy with
+              | Some x -> fun _ ->  x.Split [|'='|] |> Array.last |> int
+              | None -> fun y -> y
+
 let baseUrl = "http://goyim.dnsdojo.org/aprendices"
 
 let loadPosts = HtmlDocument.Load(baseUrl+"/list.html")
@@ -23,36 +26,42 @@ let composePostUrl (url:string) =
     baseUrl + url.[1..]
 
 let executeRequest (url:string) =
-    // printfn "- Downloading %s with thread: %i" url Threading.Thread.CurrentThread.ManagedThreadId 
     JsonValue.Load url        
-
-let replaceUrlWithHtmlLink (content:string) url =
-    let newUrl = String.Format (@"<a target=""_blank"" href=""{0}"">{1}</a>", url, url)
-    content.Replace(url, newUrl)
-
-let normaliseUrl (content:string) =
-    content.Split([|" "|], System.StringSplitOptions.RemoveEmptyEntries)
-    |> Array.filter (fun x -> x.StartsWith("http"))
-    |> Array.fold replaceUrlWithHtmlLink content
-
-let downloadPost = composePostUrl >> executeRequest
 
 let toJsonString (post: JsonValue) =
     post.ToString()
 
-let joinAll (posts: JsonValue[]) =
+let downloadPost = composePostUrl >> executeRequest >> toJsonString
+
+let joinAll posts =
     posts
-    |> Array.map toJsonString
     |> String.concat ", "
     |> sprintf "[%s]"
 
-let writeToFile (postsJson: string) =
-    File.WriteAllText ("posts.json", postsJson)
+let writeToFile name posts =
+    File.WriteAllText (name, posts)
 
-loadPosts 
-|> extractPostUrls
-|> Array.map downloadPost
-|> joinAll
-|> writeToFile
+let generatePageName i =
+    let index = match i with
+                | 0 -> String.Empty
+                | _ -> i.ToString()
+    sprintf "posts%s.json" index
+
+let createChunk generateName fileWriter index posts =
+    let (pageName:string) = generateName index
+                    
+    fileWriter pageName posts
+
+let createChunk' = createChunk generatePageName writeToFile
+
+let posts = loadPosts 
+            |> extractPostUrls
+            |> Array.map downloadPost
+
+let chunkSize = chunker posts.Length
+
+posts 
+|> Array.chunkBySize chunkSize 
+|> Array.mapi (fun i p -> createChunk' i (p |> joinAll))
 
 #quit
